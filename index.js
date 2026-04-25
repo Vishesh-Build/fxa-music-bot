@@ -72,3 +72,9 @@ process.on('uncaughtException', (err) => {
 
 // ── Login ──────────────────────────────────────────────────────────────────
 client.login(config.token);
+// ── Keep-alive HTTP server ─────────────────────────────────────────────────
+const http = require('http');
+http.createServer((req, res) => {
+  res.writeHead(200);
+  res.end('Bot is alive!');
+}).listen(process.env.PORT || 3000);
