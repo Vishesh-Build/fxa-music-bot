@@ -19,7 +19,7 @@ const config = require('../config/config');
 const { truncate, formatDuration } = require('../utils/helpers');
 const { resolveLazySong } = require('../utils/songResolver');
 
-const binaryPath = path.join(__dirname, '..', 'yt-dlp.exe');
+const binaryPath = path.join(__dirname, '..', process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
 const ytDlp = new YTDlpWrap(binaryPath);
 
 class MusicQueue {

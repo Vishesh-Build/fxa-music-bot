@@ -7,7 +7,7 @@ const { formatDuration, isSpotifyUrl, isYouTubeUrl } = require('./helpers');
 const play = require('play-dl');
 
 // Local binary path (downloaded by setup-ytdlp.js)
-const binaryPath = path.join(__dirname, '..', 'yt-dlp.exe');
+const binaryPath = path.join(__dirname, '..', process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
 const ytDlp = new YTDlpWrap(binaryPath);
 
 async function resolveSongs(query, requestedBy) {
