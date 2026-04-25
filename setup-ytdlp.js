@@ -6,7 +6,7 @@ const path = require('path');
 (async () => {
   console.log('⬇️  yt-dlp binary download ho raha hai...');
   try {
-    const binaryPath = path.join(__dirname, 'yt-dlp.exe');
+    const binaryPath = path.join(__dirname, process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
     await YTDlpWrap.downloadFromGithub(binaryPath);
     console.log('✅ yt-dlp ready hai!');
     console.log('Ab run karo: npm start');

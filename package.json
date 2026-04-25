@@ -4,7 +4,7 @@
   "description": "FxA Music Bot - A production-ready Discord music bot",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
+    "start": "node setup-ytdlp.js && node index.js",
     "dev": "nodemon index.js",
     "register": "node register-commands.js"
   },
