@@ -10,10 +10,10 @@ const execFileAsync = promisify(execFile);
 const COOKIE_PATH = path.join(__dirname, '..', 'cookies.txt');
 
 function getYtDlpBin() {
-  // Windows local binary
   const winBin = path.join(__dirname, '..', 'yt-dlp.exe');
   if (process.platform === 'win32' && fs.existsSync(winBin)) return winBin;
-  // Linux/Railway — system yt-dlp
+  const localBin = path.join(__dirname, '..', 'yt-dlp-bin');
+  if (fs.existsSync(localBin)) return localBin;
   return 'yt-dlp';
 }
 

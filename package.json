@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "register": "node register-commands.js"
+    "register": "node register-commands.js",
+    "postinstall": "node scripts/install-yt-dlp.js"
   },
   "dependencies": {
     "@discordjs/opus": "^0.9.0",
