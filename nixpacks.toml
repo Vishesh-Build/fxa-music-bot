@@ -1,8 +1,11 @@
 [phases.setup]
-nixPkgs = ["yt-dlp", "ffmpeg"]
+nixPkgs = ["yt-dlp", "ffmpeg-full"]
 
 [phases.install]
 cmds = ["npm ci"]
+
+[phases.build]
+cmds = ["echo 'yt-dlp version:' && yt-dlp --version"]
 
 [start]
 cmd = "node index.js"
