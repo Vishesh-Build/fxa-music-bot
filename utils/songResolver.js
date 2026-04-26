@@ -1,14 +1,15 @@
 // utils/songResolver.js
 // yt-dlp-wrap based resolver — no PATH needed, uses local binary
 
-const YTDlpWrap = require('yt-dlp-wrap').default;
-const path = require('path');
+const ytDlp = require('yt-dlp-exec');
 const { formatDuration, isSpotifyUrl, isYouTubeUrl } = require('./helpers');
 const play = require('play-dl');
-
 // Local binary path (downloaded by setup-ytdlp.js)
+
 const binaryPath = path.join(__dirname, '..', process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
 const ytDlp = new YTDlpWrap(binaryPath);
+
+
 
 async function resolveSongs(query, requestedBy) {
   if (isSpotifyUrl(query)) return await resolveSpotify(query, requestedBy);
