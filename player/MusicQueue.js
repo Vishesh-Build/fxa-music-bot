@@ -21,11 +21,10 @@ const { resolveLazySong } = require('../utils/songResolver');
 const execFileAsync = promisify(execFile);
 const COOKIE_PATH = path.join(__dirname, '..', 'cookies.txt');
 
-// yt-dlp binary — system (Railway) ya local .exe (Windows)
 function getYtDlpBin() {
-  const local = path.join(__dirname, '..', 'yt-dlp.exe');
-  if (fs.existsSync(local)) return local;
-  return 'yt-dlp'; // system PATH (Railway/Linux)
+  const winBin = path.join(__dirname, '..', 'yt-dlp.exe');
+  if (process.platform === 'win32' && fs.existsSync(winBin)) return winBin;
+  return 'yt-dlp'; // Linux/Railway
 }
 
 class MusicQueue {
@@ -33,7 +32,6 @@ class MusicQueue {
     this.guild = guild;
     this.textChannel = textChannel;
     this.voiceChannel = voiceChannel;
-
     this.songs = [];
     this.currentIndex = 0;
     this.volume = config.defaultVolume;
@@ -43,7 +41,6 @@ class MusicQueue {
     this.playing = false;
     this.paused = false;
     this._advancing = false;
-
     this.connection = null;
     this.audioPlayer = null;
     this.resource = null;
@@ -53,8 +50,6 @@ class MusicQueue {
     this._aloneTimer = null;
   }
 
-  // ─── Connection ────────────────────────────────────────────────────────────
-
   async connect() {
     this.connection = joinVoiceChannel({
       channelId: this.voiceChannel.id,
@@ -62,14 +57,12 @@ class MusicQueue {
       adapterCreator: this.guild.voiceAdapterCreator,
       selfDeaf: true,
     });
-
     try {
       await entersState(this.connection, VoiceConnectionStatus.Ready, 30_000);
     } catch {
       this.connection.destroy();
       throw new Error('Voice channel join nahi hua.');
     }
-
     this.connection.on(VoiceConnectionStatus.Disconnected, async () => {
       try {
         await Promise.race([
@@ -78,27 +71,22 @@ class MusicQueue {
         ]);
       } catch { this.destroy(); }
     });
-
     this._setupPlayer();
   }
 
   _setupPlayer() {
     this.audioPlayer = createAudioPlayer();
     this.connection.subscribe(this.audioPlayer);
-
     this.audioPlayer.on(AudioPlayerStatus.Idle, () => {
       if (this._advancing) return;
       this._onSongEnd();
     });
-
     this.audioPlayer.on('error', (err) => {
       console.error(`[AudioPlayer Error] ${err.message}`);
       this.textChannel.send({ embeds: [this._errorEmbed(`Audio error. Skipping...`)] });
       this._advanceQueue();
     });
   }
-
-  // ─── Streaming ─────────────────────────────────────────────────────────────
 
   async _createStream(url) {
     const bin = getYtDlpBin();
@@ -113,10 +101,7 @@ class MusicQueue {
       '--add-header', 'referer:youtube.com',
       '--add-header', 'user-agent:Mozilla/5.0',
     ];
-
-    if (fs.existsSync(COOKIE_PATH)) {
-      args.push('--cookies', COOKIE_PATH);
-    }
+    if (fs.existsSync(COOKIE_PATH)) args.push('--cookies', COOKIE_PATH);
 
     const { stdout } = await execFileAsync(bin, args, { timeout: 15000 });
     const directUrl = stdout.trim().split('\n')[0];
@@ -146,32 +131,25 @@ class MusicQueue {
     });
   }
 
-  // ─── Playback ──────────────────────────────────────────────────────────────
-
   async play() {
     let song = this.getCurrentSong();
     if (!song) { this._startInactivityTimer(); return; }
-
     try {
       if (song.isLazy) {
         song = await resolveLazySong(song);
         this.songs[this.currentIndex] = song;
       }
-
       this.resource = await this._createStream(song.url);
       this.resource.volume.setVolumeLogarithmic(this.volume / 100);
       this.audioPlayer.play(this.resource);
       this.playing = true;
       this.paused = false;
       this._advancing = false;
-
       this._clearInactivityTimer();
       await this._sendNowPlaying(song);
     } catch (err) {
       console.error(`[Play Error] ${err.message}`);
-      this.textChannel.send({
-        embeds: [this._errorEmbed(`**${song.title}** play nahi hua. Skipping...`)],
-      });
+      this.textChannel.send({ embeds: [this._errorEmbed(`**${song.title}** play nahi hua. Skipping...`)] });
       this._advanceQueue();
     }
   }
@@ -210,8 +188,6 @@ class MusicQueue {
       this._startInactivityTimer();
     }
   }
-
-  // ─── Controls ──────────────────────────────────────────────────────────────
 
   pause() {
     if (this.audioPlayer && !this.paused) { this.audioPlayer.pause(); this.paused = true; return true; }

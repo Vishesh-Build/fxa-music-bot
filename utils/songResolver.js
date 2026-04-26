@@ -10,9 +10,11 @@ const execFileAsync = promisify(execFile);
 const COOKIE_PATH = path.join(__dirname, '..', 'cookies.txt');
 
 function getYtDlpBin() {
-  const local = path.join(__dirname, '..', 'yt-dlp.exe');
-  if (fs.existsSync(local)) return local;
-  return 'yt-dlp'; // Railway/Linux system
+  // Windows local binary
+  const winBin = path.join(__dirname, '..', 'yt-dlp.exe');
+  if (process.platform === 'win32' && fs.existsSync(winBin)) return winBin;
+  // Linux/Railway — system yt-dlp
+  return 'yt-dlp';
 }
 
 function getBaseArgs() {
@@ -36,8 +38,6 @@ async function resolveSearch(query, requestedBy) {
 
     const { stdout } = await execFileAsync(bin, args, { timeout: 15000 });
     const info = JSON.parse(stdout.trim());
-
-    // ytsearch returns a playlist-like object with entries
     const video = info.entries ? info.entries[0] : info;
     if (!video) throw new Error('No results');
 
