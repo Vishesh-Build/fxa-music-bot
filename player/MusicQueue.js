@@ -24,7 +24,10 @@ const COOKIE_PATH = path.join(__dirname, '..', 'cookies.txt');
 function getYtDlpBin() {
   const winBin = path.join(__dirname, '..', 'yt-dlp.exe');
   if (process.platform === 'win32' && fs.existsSync(winBin)) return winBin;
-  return 'yt-dlp'; // Linux/Railway
+  // Downloaded binary (Railway)
+  const localBin = path.join(__dirname, '..', 'yt-dlp-bin');
+  if (fs.existsSync(localBin)) return localBin;
+  return 'yt-dlp';
 }
 
 class MusicQueue {
