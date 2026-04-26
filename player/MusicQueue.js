@@ -1,6 +1,4 @@
 // player/MusicQueue.js
-// yt-dlp-wrap based streaming — no PATH needed
-
 const {
   createAudioPlayer,
   createAudioResource,
@@ -13,12 +11,14 @@ const {
 const ytDlp = require('yt-dlp-exec');
 const { spawn } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 const ffmpegPath = require('ffmpeg-static');
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const config = require('../config/config');
 const { truncate, formatDuration } = require('../utils/helpers');
 const { resolveLazySong } = require('../utils/songResolver');
 
+const COOKIE_PATH = path.join(__dirname, '..', 'cookies.txt');
 
 class MusicQueue {
   constructor(guild, textChannel, voiceChannel) {
@@ -93,24 +93,32 @@ class MusicQueue {
   // ─── Streaming ─────────────────────────────────────────────────────────────
 
   async _createStream(url) {
-    // Get direct audio URL from yt-dlp
-    const fs = require('fs');
-    const COOKIE_PATH = require('path').join(__dirname, '..', 'cookies.txt');
+    // Build yt-dlp options
     const ytOpts = {
       getUrl: true,
-      format: 'bestaudio/best',
+      // Fixed format — no dash manifest, works on Linux/Render
+      format: '251/250/249/140/bestaudio',
       noPlaylist: true,
       noWarnings: true,
       noCheckCertificates: true,
-      youtubeSkipDashManifest: true,
-      addHeader: ['referer:youtube.com', 'user-agent:Mozilla/5.0'],
+      // NEW: replaces deprecated youtubeSkipDashManifest
+      extractorArgs: 'youtube:skip=dash',
+      addHeader: [
+        'referer:youtube.com',
+        'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      ],
     };
+
+    // Use cookies if available
     if (fs.existsSync(COOKIE_PATH)) ytOpts.cookies = COOKIE_PATH;
 
-    const info = await ytDlp(url, ytOpts);
-    const directUrl = info.trim().split('\n')[0];
+    const result = await ytDlp(url, ytOpts);
+    const directUrl = (typeof result === 'string' ? result : result.toString()).trim().split('\n')[0];
 
-    // Stream via ffmpeg
+    if (!directUrl || !directUrl.startsWith('http')) {
+      throw new Error('Could not get audio URL from yt-dlp');
+    }
+
     const ffmpeg = spawn(ffmpegPath, [
       '-reconnect', '1',
       '-reconnect_streamed', '1',
@@ -123,6 +131,8 @@ class MusicQueue {
       '-ac', '2',
       'pipe:1',
     ], { stdio: ['ignore', 'pipe', 'ignore'] });
+
+    ffmpeg.on('error', (err) => console.error('[FFmpeg Error]', err.message));
 
     return createAudioResource(ffmpeg.stdout, {
       inputType: StreamType.Raw,

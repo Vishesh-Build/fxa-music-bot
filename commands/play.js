@@ -1,45 +1,35 @@
 // commands/play.js
-// /play command — accepts YouTube URL, search query, or Spotify URL
-
 const { SlashCommandBuilder } = require('discord.js');
 const { resolveSongs } = require('../utils/songResolver');
 const Embeds = require('../utils/embeds');
-const config = require('../config/config');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('play')
     .setDescription('Play a song or add it to the queue')
     .addStringOption((opt) =>
-      opt
-        .setName('query')
-        .setDescription('Song name, YouTube URL, or Spotify URL')
-        .setRequired(true),
+      opt.setName('query').setDescription('Song name, YouTube URL, or Spotify URL').setRequired(true),
     ),
 
   async execute(interaction) {
-    await interaction.deferReply();
+    // Defer karo sabse pehle — ek baar hi
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.deferReply();
+    }
 
     const query = interaction.options.getString('query');
-    const member = interaction.member;
-    const voiceChannel = member.voice?.channel;
+    const voiceChannel = interaction.member.voice?.channel;
 
-    // ── Voice channel check ────────────────────────────────────────────────
     if (!voiceChannel) {
-      return interaction.editReply({
-        embeds: [Embeds.error('You must be in a voice channel to play music!')],
-      });
+      return interaction.editReply({ embeds: [Embeds.error('Pehle voice channel join karo!')] });
     }
 
-    // ── Bot permissions check ──────────────────────────────────────────────
     const permissions = voiceChannel.permissionsFor(interaction.guild.members.me);
     if (!permissions.has('Connect') || !permissions.has('Speak')) {
-      return interaction.editReply({
-        embeds: [Embeds.error('I need **Connect** and **Speak** permissions in your voice channel.')],
-      });
+      return interaction.editReply({ embeds: [Embeds.error('Mujhe Connect aur Speak permission chahiye.')] });
     }
 
-    // ── Resolve songs ──────────────────────────────────────────────────────
+    // Resolve songs
     let songs;
     try {
       songs = await resolveSongs(query, interaction.user.tag);
@@ -47,14 +37,13 @@ module.exports = {
       return interaction.editReply({ embeds: [Embeds.error(err.message)] });
     }
 
-    if (!songs.length) {
-      return interaction.editReply({ embeds: [Embeds.error('No results found.')] });
+    if (!songs || !songs.length) {
+      return interaction.editReply({ embeds: [Embeds.error('Koi result nahi mila.')] });
     }
 
-    // ── Get or create queue ────────────────────────────────────────────────
+    // Queue setup
     const manager = interaction.client.musicManager;
     let queue = manager.getQueue(interaction.guild.id);
-
     const isNew = !queue;
 
     if (isNew) {
@@ -67,28 +56,24 @@ module.exports = {
       }
     }
 
-    // ── Add songs ──────────────────────────────────────────────────────────
+    // Add songs
     try {
-      for (const song of songs) {
-        queue.addSong(song);
-      }
+      for (const song of songs) queue.addSong(song);
     } catch (err) {
       return interaction.editReply({ embeds: [Embeds.error(err.message)] });
     }
 
-    // ── Feedback ───────────────────────────────────────────────────────────
+    // Reply
     if (!isNew || songs.length > 1) {
-      // Already playing — just confirm the addition
-      const msg =
-        songs.length === 1
-          ? `Added **${songs[0].title}** to the queue (position #${queue.songs.length}).`
-          : `Added **${songs.length} songs** to the queue.`;
+      const msg = songs.length === 1
+        ? `**${songs[0].title}** queue mein add ho gaya (#${queue.songs.length}).`
+        : `**${songs.length} songs** queue mein add ho gaye.`;
       await interaction.editReply({ embeds: [Embeds.success(msg)] });
     } else {
-      await interaction.editReply({ embeds: [Embeds.success(`Starting playback…`)] });
+      await interaction.editReply({ embeds: [Embeds.success('Starting playback…')] });
     }
 
-    // ── Start playing if not already ───────────────────────────────────────
+    // Play
     if (!queue.playing) {
       await queue.play();
     }
