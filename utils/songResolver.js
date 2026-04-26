@@ -1,5 +1,4 @@
 // utils/songResolver.js
-
 const ytDlp = require('yt-dlp-exec');
 const { formatDuration, isSpotifyUrl, isYouTubeUrl } = require('./helpers');
 const play = require('play-dl');
@@ -9,7 +8,15 @@ const path = require('path');
 const COOKIE_PATH = path.join(__dirname, '..', 'cookies.txt');
 
 function getYtDlpOptions(extra = {}) {
-  const opts = { noWarnings: true, noCheckCertificates: true, ...extra };
+  const opts = {
+    noWarnings: true,
+    noCheckCertificates: true,
+    addHeader: [
+      'referer:youtube.com',
+      'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    ],
+    ...extra,
+  };
   if (fs.existsSync(COOKIE_PATH)) opts.cookies = COOKIE_PATH;
   return opts;
 }
@@ -34,7 +41,7 @@ async function resolveSearch(query, requestedBy) {
       }];
     }
 
-    // Text search — ytsearch5 with flatPlaylist
+    // Text search
     const info = await ytDlp(`ytsearch5:${query}`, getYtDlpOptions({
       dumpSingleJson: true,
       flatPlaylist: true,
