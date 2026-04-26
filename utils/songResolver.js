@@ -7,20 +7,20 @@ const { formatDuration, isSpotifyUrl, isYouTubeUrl } = require('./helpers');
 const play = require('play-dl');
 
 const execFileAsync = promisify(execFile);
-const COOKIE_PATH = path.join(__dirname, '..', 'cookies.txt');
 
 function getYtDlpBin() {
   const winBin = path.join(__dirname, '..', 'yt-dlp.exe');
   if (process.platform === 'win32' && fs.existsSync(winBin)) return winBin;
-  // Downloaded binary (Railway)
   const localBin = path.join(__dirname, '..', 'yt-dlp-bin');
   if (fs.existsSync(localBin)) return localBin;
   return 'yt-dlp';
 }
 
 function getBaseArgs() {
+  // cookies.txt optional hai — sirf tab use karo jab exist kare
   const args = ['--no-warnings', '--no-check-certificates'];
-  if (fs.existsSync(COOKIE_PATH)) args.push('--cookies', COOKIE_PATH);
+  const cookiePath = path.join(__dirname, '..', 'cookies.txt');
+  if (fs.existsSync(cookiePath)) args.push('--cookies', cookiePath);
   return args;
 }
 
@@ -37,7 +37,7 @@ async function resolveSearch(query, requestedBy) {
     const target = isYouTubeUrl(query) ? query : `ytsearch1:${query}`;
     const args = [...getBaseArgs(), '--dump-single-json', '--no-playlist', target];
 
-    const { stdout } = await execFileAsync(bin, args, { timeout: 15000 });
+    const { stdout } = await execFileAsync(bin, args, { timeout: 20000 });
     const info = JSON.parse(stdout.trim());
     const video = info.entries ? info.entries[0] : info;
     if (!video) throw new Error('No results');
