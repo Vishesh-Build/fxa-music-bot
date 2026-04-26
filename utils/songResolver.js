@@ -1,17 +1,24 @@
 // utils/songResolver.js
-
-const ytDlp = require('yt-dlp-exec');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
+const path = require('path');
+const fs = require('fs');
 const { formatDuration, isSpotifyUrl, isYouTubeUrl } = require('./helpers');
 const play = require('play-dl');
-const fs = require('fs');
-const path = require('path');
 
+const execFileAsync = promisify(execFile);
 const COOKIE_PATH = path.join(__dirname, '..', 'cookies.txt');
 
-function getYtDlpOptions(extra = {}) {
-  const opts = { noWarnings: true, noCheckCertificates: true, ...extra };
-  if (fs.existsSync(COOKIE_PATH)) opts.cookies = COOKIE_PATH;
-  return opts;
+function getYtDlpBin() {
+  const local = path.join(__dirname, '..', 'yt-dlp.exe');
+  if (fs.existsSync(local)) return local;
+  return 'yt-dlp'; // Railway/Linux system
+}
+
+function getBaseArgs() {
+  const args = ['--no-warnings', '--no-check-certificates'];
+  if (fs.existsSync(COOKIE_PATH)) args.push('--cookies', COOKIE_PATH);
+  return args;
 }
 
 async function resolveSongs(query, requestedBy) {
@@ -23,25 +30,15 @@ async function resolveSongs(query, requestedBy) {
 
 async function resolveSearch(query, requestedBy) {
   try {
-    if (isYouTubeUrl(query)) {
-      const info = await ytDlp(query, getYtDlpOptions({ dumpSingleJson: true, noPlaylist: true }));
-      return [{
-        title: info.title || query,
-        url: info.webpage_url || query,
-        duration: formatDuration(info.duration || 0),
-        thumbnail: info.thumbnail || '',
-        requestedBy,
-      }];
-    }
+    const bin = getYtDlpBin();
+    const target = isYouTubeUrl(query) ? query : `ytsearch1:${query}`;
+    const args = [...getBaseArgs(), '--dump-single-json', '--no-playlist', target];
 
-    // Text search — ytsearch5 with flatPlaylist
-    const info = await ytDlp(`ytsearch5:${query}`, getYtDlpOptions({
-      dumpSingleJson: true,
-      flatPlaylist: true,
-    }));
+    const { stdout } = await execFileAsync(bin, args, { timeout: 15000 });
+    const info = JSON.parse(stdout.trim());
 
-    const entries = info.entries || [];
-    const video = entries.find(e => e.id && e.title) || entries[0];
+    // ytsearch returns a playlist-like object with entries
+    const video = info.entries ? info.entries[0] : info;
     if (!video) throw new Error('No results');
 
     return [{
@@ -59,8 +56,11 @@ async function resolveSearch(query, requestedBy) {
 
 async function resolveYouTubePlaylist(url, requestedBy) {
   try {
-    const info = await ytDlp(url, getYtDlpOptions({ dumpSingleJson: true, flatPlaylist: true }));
-    const videos = (Array.isArray(info.entries) ? info.entries : [info]).slice(0, 100);
+    const bin = getYtDlpBin();
+    const args = [...getBaseArgs(), '--dump-single-json', '--flat-playlist', url];
+    const { stdout } = await execFileAsync(bin, args, { timeout: 30000 });
+    const info = JSON.parse(stdout.trim());
+    const videos = (info.entries || []).slice(0, 100);
     return videos.map(v => ({
       title: v.title || 'Unknown',
       url: v.webpage_url || `https://www.youtube.com/watch?v=${v.id}`,

@@ -8,8 +8,8 @@ const {
   joinVoiceChannel,
   StreamType,
 } = require('@discordjs/voice');
-const ytDlp = require('yt-dlp-exec');
-const { spawn } = require('child_process');
+const { execFile, spawn } = require('child_process');
+const { promisify } = require('util');
 const path = require('path');
 const fs = require('fs');
 const ffmpegPath = require('ffmpeg-static');
@@ -18,7 +18,15 @@ const config = require('../config/config');
 const { truncate, formatDuration } = require('../utils/helpers');
 const { resolveLazySong } = require('../utils/songResolver');
 
+const execFileAsync = promisify(execFile);
 const COOKIE_PATH = path.join(__dirname, '..', 'cookies.txt');
+
+// yt-dlp binary — system (Railway) ya local .exe (Windows)
+function getYtDlpBin() {
+  const local = path.join(__dirname, '..', 'yt-dlp.exe');
+  if (fs.existsSync(local)) return local;
+  return 'yt-dlp'; // system PATH (Railway/Linux)
+}
 
 class MusicQueue {
   constructor(guild, textChannel, voiceChannel) {
@@ -93,30 +101,28 @@ class MusicQueue {
   // ─── Streaming ─────────────────────────────────────────────────────────────
 
   async _createStream(url) {
-    // Build yt-dlp options
-    const ytOpts = {
-      getUrl: true,
-      // Fixed format — no dash manifest, works on Linux/Render
-      format: '251/250/249/140/bestaudio',
-      noPlaylist: true,
-      noWarnings: true,
-      noCheckCertificates: true,
-      // NEW: replaces deprecated youtubeSkipDashManifest
-      extractorArgs: 'youtube:skip=dash',
-      addHeader: [
-        'referer:youtube.com',
-        'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      ],
-    };
+    const bin = getYtDlpBin();
+    const args = [
+      url,
+      '-f', '251/250/249/140/bestaudio',
+      '-g',
+      '--no-playlist',
+      '--no-warnings',
+      '--no-check-certificates',
+      '--extractor-args', 'youtube:skip=dash',
+      '--add-header', 'referer:youtube.com',
+      '--add-header', 'user-agent:Mozilla/5.0',
+    ];
 
-    // Use cookies if available
-    if (fs.existsSync(COOKIE_PATH)) ytOpts.cookies = COOKIE_PATH;
+    if (fs.existsSync(COOKIE_PATH)) {
+      args.push('--cookies', COOKIE_PATH);
+    }
 
-    const result = await ytDlp(url, ytOpts);
-    const directUrl = (typeof result === 'string' ? result : result.toString()).trim().split('\n')[0];
+    const { stdout } = await execFileAsync(bin, args, { timeout: 15000 });
+    const directUrl = stdout.trim().split('\n')[0];
 
     if (!directUrl || !directUrl.startsWith('http')) {
-      throw new Error('Could not get audio URL from yt-dlp');
+      throw new Error('yt-dlp se audio URL nahi mila');
     }
 
     const ffmpeg = spawn(ffmpegPath, [
