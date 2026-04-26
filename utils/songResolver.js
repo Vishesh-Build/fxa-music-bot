@@ -9,14 +9,8 @@ const path = require('path');
 const COOKIE_PATH = path.join(__dirname, '..', 'cookies.txt');
 
 function getYtDlpOptions(extra = {}) {
-  const opts = {
-    noWarnings: true,
-    noCheckCertificates: true,
-    ...extra,
-  };
-  if (fs.existsSync(COOKIE_PATH)) {
-    opts.cookies = COOKIE_PATH;
-  }
+  const opts = { noWarnings: true, noCheckCertificates: true, ...extra };
+  if (fs.existsSync(COOKIE_PATH)) opts.cookies = COOKIE_PATH;
   return opts;
 }
 
@@ -30,11 +24,7 @@ async function resolveSongs(query, requestedBy) {
 async function resolveSearch(query, requestedBy) {
   try {
     if (isYouTubeUrl(query)) {
-      // Direct YouTube URL
-      const info = await ytDlp(query, getYtDlpOptions({
-        dumpSingleJson: true,
-        noPlaylist: true,
-      }));
+      const info = await ytDlp(query, getYtDlpOptions({ dumpSingleJson: true, noPlaylist: true }));
       return [{
         title: info.title || query,
         url: info.webpage_url || query,
@@ -44,16 +34,23 @@ async function resolveSearch(query, requestedBy) {
       }];
     }
 
-    // Text search — use play-dl to find YouTube URL first
-    const results = await play.search(query, { limit: 1, source: { youtube: 'video' } });
-    if (!results || results.length === 0) throw new Error('No results');
+    // Text search via yt-dlp directly
+    const info = await ytDlp(`ytsearch5:${query}`, getYtDlpOptions({
+      dumpSingleJson: true,
+      flatPlaylist: true,
+      noPlaylist: false,
+    }));
 
-    const video = results[0];
+    // Get first valid entry
+    const entries = info.entries || [];
+    const video = entries.find(e => e.id && e.title) || entries[0];
+    if (!video) throw new Error('No results');
+
     return [{
       title: video.title || query,
-      url: video.url,
-      duration: formatDuration(video.durationInSec || 0),
-      thumbnail: video.thumbnails?.[0]?.url || '',
+      url: video.webpage_url || `https://www.youtube.com/watch?v=${video.id}`,
+      duration: formatDuration(video.duration || 0),
+      thumbnail: video.thumbnail || '',
       requestedBy,
     }];
   } catch (err) {
@@ -64,10 +61,7 @@ async function resolveSearch(query, requestedBy) {
 
 async function resolveYouTubePlaylist(url, requestedBy) {
   try {
-    const info = await ytDlp(url, getYtDlpOptions({
-      dumpSingleJson: true,
-      flatPlaylist: true,
-    }));
+    const info = await ytDlp(url, getYtDlpOptions({ dumpSingleJson: true, flatPlaylist: true }));
     const videos = (Array.isArray(info.entries) ? info.entries : [info]).slice(0, 100);
     return videos.map(v => ({
       title: v.title || 'Unknown',

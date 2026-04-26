@@ -102,6 +102,8 @@ class MusicQueue {
       noPlaylist: true,
       noWarnings: true,
       noCheckCertificates: true,
+      youtubeSkipDashManifest: true,
+      addHeader: ['referer:youtube.com', 'user-agent:Mozilla/5.0'],
     };
     if (fs.existsSync(COOKIE_PATH)) ytOpts.cookies = COOKIE_PATH;
 
