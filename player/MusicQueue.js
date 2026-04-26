@@ -1,4 +1,6 @@
 // player/MusicQueue.js
+// yt-dlp-wrap based streaming — no PATH needed
+
 const {
   createAudioPlayer,
   createAudioResource,
@@ -8,22 +10,22 @@ const {
   joinVoiceChannel,
   StreamType,
 } = require('@discordjs/voice');
+const ytDlp = require('yt-dlp-exec');
 const { spawn } = require('child_process');
-const ffmpegPath = require('ffmpeg-static');
-const fs = require('fs');
 const path = require('path');
+const ffmpegPath = require('ffmpeg-static');
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const config = require('../config/config');
 const { truncate, formatDuration } = require('../utils/helpers');
 const { resolveLazySong } = require('../utils/songResolver');
 
-const COOKIE_PATH = path.join(__dirname, '..', 'cookies.txt');
 
 class MusicQueue {
   constructor(guild, textChannel, voiceChannel) {
     this.guild = guild;
     this.textChannel = textChannel;
     this.voiceChannel = voiceChannel;
+
     this.songs = [];
     this.currentIndex = 0;
     this.volume = config.defaultVolume;
@@ -33,6 +35,7 @@ class MusicQueue {
     this.playing = false;
     this.paused = false;
     this._advancing = false;
+
     this.connection = null;
     this.audioPlayer = null;
     this.resource = null;
@@ -42,6 +45,8 @@ class MusicQueue {
     this._aloneTimer = null;
   }
 
+  // ─── Connection ────────────────────────────────────────────────────────────
+
   async connect() {
     this.connection = joinVoiceChannel({
       channelId: this.voiceChannel.id,
@@ -49,12 +54,14 @@ class MusicQueue {
       adapterCreator: this.guild.voiceAdapterCreator,
       selfDeaf: true,
     });
+
     try {
       await entersState(this.connection, VoiceConnectionStatus.Ready, 30_000);
     } catch {
       this.connection.destroy();
       throw new Error('Voice channel join nahi hua.');
     }
+
     this.connection.on(VoiceConnectionStatus.Disconnected, async () => {
       try {
         await Promise.race([
@@ -63,81 +70,67 @@ class MusicQueue {
         ]);
       } catch { this.destroy(); }
     });
+
     this._setupPlayer();
   }
 
   _setupPlayer() {
     this.audioPlayer = createAudioPlayer();
     this.connection.subscribe(this.audioPlayer);
+
     this.audioPlayer.on(AudioPlayerStatus.Idle, () => {
       if (this._advancing) return;
       this._onSongEnd();
     });
+
     this.audioPlayer.on('error', (err) => {
       console.error(`[AudioPlayer Error] ${err.message}`);
+      this.textChannel.send({ embeds: [this._errorEmbed(`Audio error. Skipping...`)] });
       this._advanceQueue();
     });
   }
 
-  async _createStream(url) {
-    const ytDlp = require('yt-dlp-exec');
+  // ─── Streaming ─────────────────────────────────────────────────────────────
 
-    // Build options — NO deprecated flags
+  async _createStream(url) {
+    // Get direct audio URL from yt-dlp
+    const fs = require('fs');
+    const COOKIE_PATH = require('path').join(__dirname, '..', 'cookies.txt');
     const ytOpts = {
       getUrl: true,
+      format: 'bestaudio/best',
       noPlaylist: true,
       noWarnings: true,
       noCheckCertificates: true,
-      addHeader: [
-        'referer:youtube.com',
-        'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      ],
-      // Try multiple formats — works on Render/Linux
-      format: 'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best',
+      youtubeSkipDashManifest: true,
+      addHeader: ['referer:youtube.com', 'user-agent:Mozilla/5.0'],
     };
+    if (fs.existsSync(COOKIE_PATH)) ytOpts.cookies = COOKIE_PATH;
 
-    // Add cookies only if file exists
-    if (fs.existsSync(COOKIE_PATH)) {
-      ytOpts.cookies = COOKIE_PATH;
-    }
+    const info = await ytDlp(url, ytOpts);
+    const directUrl = info.trim().split('\n')[0];
 
-    let directUrl;
-    try {
-      const result = await ytDlp(url, ytOpts);
-      directUrl = (typeof result === 'string' ? result : String(result)).trim().split('\n')[0];
-    } catch (err) {
-      // Fallback: try without format restriction
-      console.warn('[Stream] Format failed, trying fallback...');
-      const fallbackOpts = { ...ytOpts };
-      delete fallbackOpts.format;
-      const result2 = await ytDlp(url, { ...fallbackOpts, format: 'best' });
-      directUrl = (typeof result2 === 'string' ? result2 : String(result2)).trim().split('\n')[0];
-    }
-
-    if (!directUrl || !directUrl.startsWith('http')) {
-      throw new Error('Invalid stream URL from yt-dlp');
-    }
-
+    // Stream via ffmpeg
     const ffmpeg = spawn(ffmpegPath, [
       '-reconnect', '1',
       '-reconnect_streamed', '1',
       '-reconnect_delay_max', '5',
       '-i', directUrl,
       '-analyzeduration', '0',
-      '-loglevel', 'error',
+      '-loglevel', '0',
       '-f', 's16le',
       '-ar', '48000',
       '-ac', '2',
       'pipe:1',
     ], { stdio: ['ignore', 'pipe', 'ignore'] });
 
-    ffmpeg.on('error', (err) => console.error('[FFmpeg Error]', err.message));
-
     return createAudioResource(ffmpeg.stdout, {
       inputType: StreamType.Raw,
       inlineVolume: true,
     });
   }
+
+  // ─── Playback ──────────────────────────────────────────────────────────────
 
   async play() {
     let song = this.getCurrentSong();
@@ -155,12 +148,15 @@ class MusicQueue {
       this.playing = true;
       this.paused = false;
       this._advancing = false;
+
       this._clearInactivityTimer();
       await this._sendNowPlaying(song);
     } catch (err) {
       console.error(`[Play Error] ${err.message}`);
-      this.textChannel.send({ embeds: [this._errorEmbed(`**${song.title}** play nahi hua. Skipping...`)] });
-      await this._advanceQueue();
+      this.textChannel.send({
+        embeds: [this._errorEmbed(`**${song.title}** play nahi hua. Skipping...`)],
+      });
+      this._advanceQueue();
     }
   }
 
@@ -199,14 +195,18 @@ class MusicQueue {
     }
   }
 
+  // ─── Controls ──────────────────────────────────────────────────────────────
+
   pause() {
     if (this.audioPlayer && !this.paused) { this.audioPlayer.pause(); this.paused = true; return true; }
     return false;
   }
+
   resume() {
     if (this.audioPlayer && this.paused) { this.audioPlayer.unpause(); this.paused = false; return true; }
     return false;
   }
+
   async skip() {
     if (!this.audioPlayer) return false;
     this._advancing = true;
@@ -214,25 +214,31 @@ class MusicQueue {
     await this._advanceQueue();
     return true;
   }
+
   stop() {
     this.songs = []; this.currentIndex = 0;
     this.playing = false; this.paused = false; this._advancing = false;
     if (this.audioPlayer) this.audioPlayer.stop(true);
   }
+
   setVolume(vol) {
     this.volume = Math.max(0, Math.min(100, vol));
     if (this.resource?.volume) this.resource.volume.setVolumeLogarithmic(this.volume / 100);
   }
+
   setLoop(mode) {
     if (Object.values(config.loopModes).includes(mode)) { this.loopMode = mode; return true; }
     return false;
   }
+
   toggleShuffle() {
     this.isShuffled = !this.isShuffled;
     if (this.isShuffled) this._shuffleQueue();
     return this.isShuffled;
   }
+
   toggleAutoplay() { this.autoplay = !this.autoplay; return this.autoplay; }
+
   _shuffleQueue() {
     const rest = this.songs.slice(this.currentIndex + 1);
     for (let i = rest.length - 1; i > 0; i--) {
@@ -241,20 +247,24 @@ class MusicQueue {
     }
     this.songs = [...this.songs.slice(0, this.currentIndex + 1), ...rest];
   }
+
   addSong(song) {
     if (this.songs.length >= config.maxQueueSize) throw new Error(`Queue full (max ${config.maxQueueSize}).`);
     this.songs.push(song);
   }
+
   removeSong(index) {
     const i = index - 1;
     if (i < 0 || i >= this.songs.length || i === this.currentIndex) return null;
     if (i < this.currentIndex) this.currentIndex--;
     return this.songs.splice(i, 1)[0];
   }
+
   clearQueue() {
     const current = this.songs[this.currentIndex];
     this.songs = current ? [current] : []; this.currentIndex = 0;
   }
+
   getCurrentSong() { return this.songs[this.currentIndex] || null; }
   getUpcomingSongs() { return this.songs.slice(this.currentIndex + 1); }
 
@@ -316,6 +326,7 @@ class MusicQueue {
     if (this.loopMode === config.loopModes.QUEUE) return 'Queue';
     return 'Off';
   }
+
   _errorEmbed(msg) { return new EmbedBuilder().setColor(config.colors.error).setDescription(`❌ ${msg}`); }
   _infoEmbed(msg) { return new EmbedBuilder().setColor(config.colors.info).setDescription(`ℹ️ ${msg}`); }
 
@@ -326,6 +337,7 @@ class MusicQueue {
       this.destroy();
     }, config.inactivityTimeout);
   }
+
   _clearInactivityTimer() {
     if (this.inactivityTimer) { clearTimeout(this.inactivityTimer); this.inactivityTimer = null; }
   }
