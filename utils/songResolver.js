@@ -34,14 +34,12 @@ async function resolveSearch(query, requestedBy) {
       }];
     }
 
-    // Text search via yt-dlp directly
+    // Text search — ytsearch5 with flatPlaylist
     const info = await ytDlp(`ytsearch5:${query}`, getYtDlpOptions({
       dumpSingleJson: true,
       flatPlaylist: true,
-      noPlaylist: false,
     }));
 
-    // Get first valid entry
     const entries = info.entries || [];
     const video = entries.find(e => e.id && e.title) || entries[0];
     if (!video) throw new Error('No results');
