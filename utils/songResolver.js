@@ -3,6 +3,46 @@
 const ytDlp = require('yt-dlp-exec');
 const { formatDuration, isSpotifyUrl, isYouTubeUrl } = require('./helpers');
 const play = require('play-dl');
+const fs = require('fs');
+const path = require('path');
+
+// ── YouTube cookies setup ──────────────────────────────────────────────────
+const COOKIE_PATH = path.join('/tmp', 'yt-cookies.txt');
+
+function setupCookies() {
+  const cookie = process.env.YT_COOKIE;
+  if (!cookie) return null;
+
+  // Convert "NAME=value; NAME2=value2" format to Netscape cookie file
+  const lines = ['# Netscape HTTP Cookie File'];
+  cookie.split(';').forEach(pair => {
+    const [name, ...rest] = pair.trim().split('=');
+    if (name && rest.length) {
+      lines.push(`.youtube.com\tTRUE\t/\tFALSE\t2099999999\t${name.trim()}\t${rest.join('=').trim()}`);
+    }
+  });
+
+  fs.writeFileSync(COOKIE_PATH, lines.join('\n'));
+  return COOKIE_PATH;
+}
+
+const cookiePath = setupCookies();
+
+function getYtDlpOptions(extra = {}) {
+  const opts = {
+    noWarnings: true,
+    noCallHome: true,
+    noCheckCertificates: true,
+    preferFreeFormats: true,
+    ...extra,
+  };
+  if (cookiePath && fs.existsSync(cookiePath)) {
+    opts.cookies = cookiePath;
+  }
+  return opts;
+}
+
+// ── Main resolver ──────────────────────────────────────────────────────────
 
 async function resolveSongs(query, requestedBy) {
   if (isSpotifyUrl(query)) return await resolveSpotify(query, requestedBy);
@@ -16,16 +56,16 @@ async function resolveSearch(query, requestedBy) {
     const isUrl = isYouTubeUrl(query);
     const target = isUrl ? query : `ytsearch1:${query}`;
 
-    const info = await ytDlp(target, {
+    const info = await ytDlp(target, getYtDlpOptions({
       dumpSingleJson: true,
       noPlaylist: true,
-      noWarnings: true,
-    });
+    }));
+
     const video = info;
 
     return [{
       title: video.title || query,
-      url: `https://www.youtube.com/watch?v=${video.id}`,
+      url: video.webpage_url || `https://www.youtube.com/watch?v=${video.id}`,
       duration: formatDuration(video.duration || 0),
       thumbnail: video.thumbnail || '',
       requestedBy,
@@ -38,15 +78,14 @@ async function resolveSearch(query, requestedBy) {
 
 async function resolveYouTubePlaylist(url, requestedBy) {
   try {
-    const info = await ytDlp(url, {
+    const info = await ytDlp(url, getYtDlpOptions({
       dumpSingleJson: true,
       flatPlaylist: true,
-      noWarnings: true,
-    });
+    }));
     const videos = (Array.isArray(info.entries) ? info.entries : [info]).slice(0, 100);
     return videos.map(v => ({
       title: v.title || 'Unknown',
-      url: `https://www.youtube.com/watch?v=${v.id}`,
+      url: v.webpage_url || `https://www.youtube.com/watch?v=${v.id}`,
       duration: formatDuration(v.duration || 0),
       thumbnail: v.thumbnail || '',
       requestedBy,

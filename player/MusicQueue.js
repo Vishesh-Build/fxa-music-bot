@@ -13,13 +13,14 @@ const {
 const ytDlp = require('yt-dlp-exec');
 const { spawn } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 const ffmpegPath = require('ffmpeg-static');
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const config = require('../config/config');
 const { truncate, formatDuration } = require('../utils/helpers');
 const { resolveLazySong } = require('../utils/songResolver');
 
-
+const COOKIE_PATH = path.join('/tmp', 'yt-cookies.txt');
 
 class MusicQueue {
   constructor(guild, textChannel, voiceChannel) {
@@ -94,12 +95,18 @@ class MusicQueue {
   // ─── Streaming ─────────────────────────────────────────────────────────────
 
   async _createStream(url) {
-    // Get direct audio URL from yt-dlp
-    const info = await ytDlp(url, {
+    // Build yt-dlp options with cookies
+    const ytOpts = {
       getUrl: true,
       format: 'bestaudio/best',
       noPlaylist: true,
-    });
+      noWarnings: true,
+      noCallHome: true,
+      noCheckCertificates: true,
+    };
+    if (fs.existsSync(COOKIE_PATH)) ytOpts.cookies = COOKIE_PATH;
+
+    const info = await ytDlp(url, ytOpts);
     const directUrl = info.trim().split('\n')[0];
 
     // Stream via ffmpeg
