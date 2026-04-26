@@ -1,14 +1,8 @@
 // utils/songResolver.js
-// yt-dlp-wrap based resolver — no PATH needed, uses local binary
 
 const ytDlp = require('yt-dlp-exec');
 const { formatDuration, isSpotifyUrl, isYouTubeUrl } = require('./helpers');
 const play = require('play-dl');
-// Local binary path (downloaded by setup-ytdlp.js)
-
-
-
-
 
 async function resolveSongs(query, requestedBy) {
   if (isSpotifyUrl(query)) return await resolveSpotify(query, requestedBy);
@@ -22,9 +16,12 @@ async function resolveSearch(query, requestedBy) {
     const isUrl = isYouTubeUrl(query);
     const target = isUrl ? query : `ytsearch1:${query}`;
 
-    const info = await ytDlp.getVideoInfo([target, '--no-playlist']);
-    // getVideoInfo returns array for playlists, object for single
-    const video = Array.isArray(info) ? info[0] : info;
+    const info = await ytDlp(target, {
+      dumpSingleJson: true,
+      noPlaylist: true,
+      noWarnings: true,
+    });
+    const video = info;
 
     return [{
       title: video.title || query,
@@ -41,8 +38,12 @@ async function resolveSearch(query, requestedBy) {
 
 async function resolveYouTubePlaylist(url, requestedBy) {
   try {
-    const info = await ytDlp.getVideoInfo([url, '--flat-playlist']);
-    const videos = (Array.isArray(info) ? info : [info]).slice(0, 100);
+    const info = await ytDlp(url, {
+      dumpSingleJson: true,
+      flatPlaylist: true,
+      noWarnings: true,
+    });
+    const videos = (Array.isArray(info.entries) ? info.entries : [info]).slice(0, 100);
     return videos.map(v => ({
       title: v.title || 'Unknown',
       url: `https://www.youtube.com/watch?v=${v.id}`,
