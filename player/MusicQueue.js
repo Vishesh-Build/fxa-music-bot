@@ -98,7 +98,7 @@ class MusicQueue {
     const COOKIE_PATH = require('path').join(__dirname, '..', 'cookies.txt');
     const ytOpts = {
       getUrl: true,
-      format: 'bestaudio[ext=webm]/bestaudio/best',
+      format: 'bestaudio/best',
       noPlaylist: true,
       noWarnings: true,
       noCheckCertificates: true,

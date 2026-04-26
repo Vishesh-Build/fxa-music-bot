@@ -47,11 +47,16 @@ async function resolveSearch(query, requestedBy) {
     const info = await ytDlp(target, getYtDlpOptions({
       dumpSingleJson: true,
       noPlaylist: true,
+      format: 'bestaudio/best',
     }));
 
+    const videoId = info.id || (info.entries && info.entries[0]?.id);
+    const videoTitle = info.title || (info.entries && info.entries[0]?.title) || query;
+    const videoUrl = info.webpage_url || (info.entries && info.entries[0]?.webpage_url) || `https://www.youtube.com/watch?v=${videoId}`;
+
     return [{
-      title: info.title || query,
-      url: info.webpage_url || `https://www.youtube.com/watch?v=${info.id}`,
+      title: videoTitle,
+      url: videoUrl,
       duration: formatDuration(info.duration || 0),
       thumbnail: info.thumbnail || '',
       requestedBy,
