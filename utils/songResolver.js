@@ -10,20 +10,29 @@ const path = require('path');
 const COOKIE_PATH = path.join('/tmp', 'yt-cookies.txt');
 
 function setupCookies() {
+  const fileContent = process.env.YT_COOKIES_FILE_CONTENT;
+  if (fileContent) {
+    fs.writeFileSync(COOKIE_PATH, fileContent);
+    console.log('✅ YouTube cookies loaded from YT_COOKIES_FILE_CONTENT');
+    return COOKIE_PATH;
+  }
+
   const cookie = process.env.YT_COOKIE;
-  if (!cookie) return null;
+  if (cookie) {
+    const lines = ['# Netscape HTTP Cookie File'];
+    cookie.split(';').forEach(pair => {
+      const [name, ...rest] = pair.trim().split('=');
+      if (name && rest.length) {
+        lines.push(`.youtube.com\tTRUE\t/\tFALSE\t2099999999\t${name.trim()}\t${rest.join('=').trim()}`);
+      }
+    });
+    fs.writeFileSync(COOKIE_PATH, lines.join('\n'));
+    console.log('✅ YouTube cookies loaded from YT_COOKIE');
+    return COOKIE_PATH;
+  }
 
-  // Convert "NAME=value; NAME2=value2" format to Netscape cookie file
-  const lines = ['# Netscape HTTP Cookie File'];
-  cookie.split(';').forEach(pair => {
-    const [name, ...rest] = pair.trim().split('=');
-    if (name && rest.length) {
-      lines.push(`.youtube.com\tTRUE\t/\tFALSE\t2099999999\t${name.trim()}\t${rest.join('=').trim()}`);
-    }
-  });
-
-  fs.writeFileSync(COOKIE_PATH, lines.join('\n'));
-  return COOKIE_PATH;
+  console.warn('⚠️ No YouTube cookies found!');
+  return null;
 }
 
 const cookiePath = setupCookies();
@@ -42,8 +51,6 @@ function getYtDlpOptions(extra = {}) {
   return opts;
 }
 
-// ── Main resolver ──────────────────────────────────────────────────────────
-
 async function resolveSongs(query, requestedBy) {
   if (isSpotifyUrl(query)) return await resolveSpotify(query, requestedBy);
   if (isYouTubeUrl(query) && (query.includes('list=') || query.includes('playlist=')))
@@ -61,13 +68,11 @@ async function resolveSearch(query, requestedBy) {
       noPlaylist: true,
     }));
 
-    const video = info;
-
     return [{
-      title: video.title || query,
-      url: video.webpage_url || `https://www.youtube.com/watch?v=${video.id}`,
-      duration: formatDuration(video.duration || 0),
-      thumbnail: video.thumbnail || '',
+      title: info.title || query,
+      url: info.webpage_url || `https://www.youtube.com/watch?v=${info.id}`,
+      duration: formatDuration(info.duration || 0),
+      thumbnail: info.thumbnail || '',
       requestedBy,
     }];
   } catch (err) {
