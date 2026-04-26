@@ -40,7 +40,6 @@ const cookiePath = setupCookies();
 function getYtDlpOptions(extra = {}) {
   const opts = {
     noWarnings: true,
-    noCallHome: true,
     noCheckCertificates: true,
     preferFreeFormats: true,
     ...extra,
