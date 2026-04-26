@@ -10,7 +10,7 @@ const {
   joinVoiceChannel,
   StreamType,
 } = require('@discordjs/voice');
-const YTDlpWrap = require('yt-dlp-wrap').default;
+const ytDlp = require('yt-dlp-exec');
 const { spawn } = require('child_process');
 const path = require('path');
 const ffmpegPath = require('ffmpeg-static');
@@ -19,8 +19,7 @@ const config = require('../config/config');
 const { truncate, formatDuration } = require('../utils/helpers');
 const { resolveLazySong } = require('../utils/songResolver');
 
-const binaryPath = path.join(__dirname, '..', process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
-const ytDlp = new YTDlpWrap(binaryPath);
+
 
 class MusicQueue {
   constructor(guild, textChannel, voiceChannel) {
@@ -96,14 +95,12 @@ class MusicQueue {
 
   async _createStream(url) {
     // Get direct audio URL from yt-dlp
-    const audioUrl = await ytDlp.execPromise([
-      url,
-      '-f', 'bestaudio/best',
-      '-g',
-      '--no-playlist',
-    ]);
-
-    const directUrl = audioUrl.trim().split('\n')[0];
+    const info = await ytDlp(url, {
+      getUrl: true,
+      format: 'bestaudio/best',
+      noPlaylist: true,
+    });
+    const directUrl = info.trim().split('\n')[0];
 
     // Stream via ffmpeg
     const ffmpeg = spawn(ffmpegPath, [
