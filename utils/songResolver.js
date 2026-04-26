@@ -7,31 +7,13 @@ const fs = require('fs');
 const path = require('path');
 
 // ── YouTube cookies setup ──────────────────────────────────────────────────
-const COOKIE_PATH = path.join('/tmp', 'yt-cookies.txt');
-
 function setupCookies() {
-  const fileContent = process.env.YT_COOKIES_FILE_CONTENT;
-  if (fileContent) {
-    fs.writeFileSync(COOKIE_PATH, fileContent);
-    console.log('✅ YouTube cookies loaded from YT_COOKIES_FILE_CONTENT');
-    return COOKIE_PATH;
+  const localPath = path.join(__dirname, '..', 'cookies.txt');
+  if (fs.existsSync(localPath)) {
+    console.log('✅ YouTube cookies loaded from cookies.txt');
+    return localPath;
   }
-
-  const cookie = process.env.YT_COOKIE;
-  if (cookie) {
-    const lines = ['# Netscape HTTP Cookie File'];
-    cookie.split(';').forEach(pair => {
-      const [name, ...rest] = pair.trim().split('=');
-      if (name && rest.length) {
-        lines.push(`.youtube.com\tTRUE\t/\tFALSE\t2099999999\t${name.trim()}\t${rest.join('=').trim()}`);
-      }
-    });
-    fs.writeFileSync(COOKIE_PATH, lines.join('\n'));
-    console.log('✅ YouTube cookies loaded from YT_COOKIE');
-    return COOKIE_PATH;
-  }
-
-  console.warn('⚠️ No YouTube cookies found!');
+  console.warn('⚠️ No cookies.txt found!');
   return null;
 }
 
