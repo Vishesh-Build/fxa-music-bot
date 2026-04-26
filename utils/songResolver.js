@@ -6,28 +6,16 @@ const play = require('play-dl');
 const fs = require('fs');
 const path = require('path');
 
-// ── YouTube cookies setup ──────────────────────────────────────────────────
-function setupCookies() {
-  const localPath = path.join(__dirname, '..', 'cookies.txt');
-  if (fs.existsSync(localPath)) {
-    console.log('✅ YouTube cookies loaded from cookies.txt');
-    return localPath;
-  }
-  console.warn('⚠️ No cookies.txt found!');
-  return null;
-}
-
-const cookiePath = setupCookies();
+const COOKIE_PATH = path.join(__dirname, '..', 'cookies.txt');
 
 function getYtDlpOptions(extra = {}) {
   const opts = {
     noWarnings: true,
     noCheckCertificates: true,
-    preferFreeFormats: true,
     ...extra,
   };
-  if (cookiePath && fs.existsSync(cookiePath)) {
-    opts.cookies = cookiePath;
+  if (fs.existsSync(COOKIE_PATH)) {
+    opts.cookies = COOKIE_PATH;
   }
   return opts;
 }
@@ -41,24 +29,31 @@ async function resolveSongs(query, requestedBy) {
 
 async function resolveSearch(query, requestedBy) {
   try {
-    const isUrl = isYouTubeUrl(query);
-    const target = isUrl ? query : `ytsearch1:${query}`;
+    if (isYouTubeUrl(query)) {
+      // Direct YouTube URL
+      const info = await ytDlp(query, getYtDlpOptions({
+        dumpSingleJson: true,
+        noPlaylist: true,
+      }));
+      return [{
+        title: info.title || query,
+        url: info.webpage_url || query,
+        duration: formatDuration(info.duration || 0),
+        thumbnail: info.thumbnail || '',
+        requestedBy,
+      }];
+    }
 
-    const info = await ytDlp(target, getYtDlpOptions({
-      dumpSingleJson: true,
-      noPlaylist: true,
-      format: 'bestaudio/best',
-    }));
+    // Text search — use play-dl to find YouTube URL first
+    const results = await play.search(query, { limit: 1, source: { youtube: 'video' } });
+    if (!results || results.length === 0) throw new Error('No results');
 
-    const videoId = info.id || (info.entries && info.entries[0]?.id);
-    const videoTitle = info.title || (info.entries && info.entries[0]?.title) || query;
-    const videoUrl = info.webpage_url || (info.entries && info.entries[0]?.webpage_url) || `https://www.youtube.com/watch?v=${videoId}`;
-
+    const video = results[0];
     return [{
-      title: videoTitle,
-      url: videoUrl,
-      duration: formatDuration(info.duration || 0),
-      thumbnail: info.thumbnail || '',
+      title: video.title || query,
+      url: video.url,
+      duration: formatDuration(video.durationInSec || 0),
+      thumbnail: video.thumbnails?.[0]?.url || '',
       requestedBy,
     }];
   } catch (err) {
